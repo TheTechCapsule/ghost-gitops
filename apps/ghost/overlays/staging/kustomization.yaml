@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ghost-staging    # <— new namespace
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - hpa.yaml
+
+patches:
+  - path: patch-ghost-env.yaml
+  - path: patch-ghost-init.yaml

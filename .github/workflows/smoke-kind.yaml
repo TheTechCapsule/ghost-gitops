@@ -1,0 +1,214 @@
+name: Smoke test (kind)
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NS: default
+      HOSTNAME_DEV: blog.site.local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Install kustomize
+        run: |
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.1/kustomize_v5.4.1_linux_amd64.tar.gz \
+          | tar -xz && sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.22.0
+          wait: 120s
+      
+      - name: Install local-path-provisioner (dynamic PVCs)
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+          # make it the default StorageClass
+          kubectl patch storageclass local-path -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+          # wait for controller to be up
+          kubectl -n local-path-storage rollout status deploy/local-path-provisioner --timeout=120s
+
+      - name: Relax Pod Security Policies
+        run: |
+          kubectl label ns default \
+          pod-security.kubernetes.io/enforce=baseline \
+          pod-security.kubernetes.io/warn=restricted \
+          pod-security.kubernetes.io/audit=restricted \
+          --overwrite
+
+      - name: Sanity check StorageClasses
+        run: |
+          kubectl get storageclass
+
+      - name: Generate CI secrets and apply dev overlay
+        run: |
+          set -euo pipefail
+          kubectl create ns default || true
+
+          # Generate random passwords for MySQL
+          ROOT_PW=$(openssl rand -hex 16)
+          USER_PW=$(openssl rand -hex 16)
+
+          # Create required secrets for smoke tests (dev namespace)
+          cat > /tmp/ci-secrets.yaml <<YAML
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ghost-mysql-secret
+          type: Opaque
+          stringData:
+            mysql-root-password: "$ROOT_PW"
+            mysql-user-password: "$USER_PW"
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ghost-smtp-secret
+          type: Opaque
+          stringData:
+            SMTP_USER: noreply@example.com
+            SMTP_PASSWORD: dev-smtp-pass
+            SMTP_HOST: smtp.example.com
+            SMTP_PORT: "587"
+            SMTP_FROM: noreply@example.com
+            SMTP_SERVICE: Zoho
+          YAML
+
+          kubectl apply -f /tmp/ci-secrets.yaml
+
+          # Apply the dev overlay manifests
+          kustomize build apps/ghost/overlays/dev | kubectl apply -f -
+
+      - name: Wait for MySQL (StatefulSet) then Ghost (Deployment)
+        run: |
+          set -Eeuo pipefail
+          # helpful listing while we wait
+          kubectl -n "$NS" get all
+          # Wait for MySQL ready first (Ghost depends on it)
+          kubectl -n "$NS" rollout status statefulset/ghost-mysql --timeout=600s
+          # Then Ghost
+          kubectl -n "$NS" wait deploy/ghost --for=condition=Available --timeout=600s
+          kubectl -n "$NS" get pods -o wide
+          kubectl -n "$NS" get svc
+
+      - name: Test backup jobs
+        run: |
+          set -euo pipefail
+
+          # Trigger DB + content backups from their CronJobs
+          # CHANGED: capture generated names so we can reference them later
+          DB_JOB="db-now-$(date +%s)"
+          kubectl create job --from=cronjob/ghost-db-backup "$DB_JOB"
+
+          sleep 1  # avoid same-second name collision
+          CONTENT_JOB="content-now-$(date +%s)"
+          kubectl create job --from=cronjob/ghost-content-backup "$CONTENT_JOB"
+
+          # Wait for completion (give content a bit longer for tar+gzip)
+          # CHANGED: wait by explicit resource name instead of a label selector
+          kubectl wait --for=condition=Complete "job/$DB_JOB" --timeout=180s
+          kubectl wait --for=condition=Complete "job/$CONTENT_JOB" --timeout=300s
+
+          # Show logs (helpful if a flake happens)
+          # CHANGED: get logs via job resource (avoids selector mismatch)
+          kubectl logs "job/$DB_JOB" --tail=200 --prefix
+          kubectl logs "job/$CONTENT_JOB" --tail=200 --prefix
+
+          # Run verify once; expect success
+          sleep 1
+          VERIFY_JOB="verify-now-$(date +%s)"
+          kubectl create job --from=cronjob/ghost-backup-verify "$VERIFY_JOB"
+
+          # CHANGED: wait by resource name; fix typo --prefi -> --prefix
+          kubectl wait --for=condition=Complete "job/$VERIFY_JOB" --timeout=120s
+          kubectl logs "job/$VERIFY_JOB" --tail=200 --prefix
+
+      - name: Cluster diagnostics (pods/events/logs)
+        if: always()
+        run: |
+          set -euo pipefail
+          NS=default
+          echo "==== STORAGECLASSES ===="
+          kubectl get storageclass
+          echo "==== PVCs ===="
+          kubectl -n "$NS" get pvc
+          echo "==== PODS ===="
+          kubectl -n "$NS" get pods -o wide
+          echo "==== EVENTS (recent) ===="
+          kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -n 100 || true
+          for p in $(kubectl -n "$NS" get pods -o name | grep -E 'ghost|ghost-mysql' || true); do
+            echo "==== DESCRIBE $p ===="
+            kubectl -n "$NS" describe "$p" || true
+            echo "==== LOGS $p (all containers) ===="
+            kubectl -n "$NS" logs "$p" --all-containers --tail=200 || true
+          done
+
+      - name: Port-forward Ghost and curl with Host header
+        run: |
+          set -Eeuo pipefail
+          # trap for diagnostics
+          dump() {
+            echo "==== EVENTS (last 100) ===="
+            kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -n 100 || true
+            echo "==== PODS ===="
+            kubectl -n "$NS" get pods -o wide || true
+            for p in $(kubectl -n "$NS" get pods -o name | grep -E 'ghost|ghost-mysql' || true); do
+              echo "==== DESCRIBE $p ===="
+              kubectl -n "$NS" describe "$p" || true
+              echo "==== LOGS $p (all containers) ===="
+              kubectl -n "$NS" logs "$p" --all-containers --tail=200 || true
+            done
+          }
+          trap 'dump' ERR
+
+          # Forward service port 2368 -> 8080
+          kubectl -n "$NS" port-forward svc/ghost 8080:2368 >/tmp/pf.log 2>&1 &
+          PF_PID=$!
+          cleanup() { kill $PF_PID 2>/dev/null || true; }
+          trap 'cleanup; dump' ERR
+          # Give the forward a moment
+          for i in {1..10}; do
+            sleep 1
+            kill -0 $PF_PID 2>/dev/null && break || true
+          done
+
+          # Probe with Host header so Ghost serves without external DNS
+          # Accept 200 or a redirect (Ghost might redirect / -> /blog)
+          for i in {1..60}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${HOSTNAME_DEV}" http://127.0.0.1:8080/ || true)
+            echo "try $i: / -> $code"
+            if [ "$code" = "200" ] || [ "$code" = "301" ] || [ "$code" = "302" ] || [ "$code" = "308" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          # Also check /blog explicitly
+          code2=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${HOSTNAME_DEV}" http://127.0.0.1:8080/blog || true)
+          echo "final check: /blog -> $code2"
+          [ "$code2" = "200" ] || [ "$code2" = "301" ] || [ "$code2" = "302" ] || [ "$code2" = "308" ]
+
+          cleanup
+          echo "Smoke test: OK"
+
+      # Always dump port-forward logs for debugging
+      - name: Show port-forward logs
+        if: always()
+        run: |
+          echo "==== port-forward output ===="
+          tail -n +1 /tmp/pf.log || true
+          echo "--- ghost logs ---"
+          kubectl logs deploy/ghost --all-containers=true --tail=200 || true
+          echo "--- ghost-mysql logs ---"
+          kubectl logs statefulset/ghost-mysql --all-containers=true --tail=200 || true

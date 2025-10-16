@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ghost-db-backup
+  labels:
+    app: ghost-backup
+spec:
+  schedule: "0 2 * * *" # daily at 02:00
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ghost-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: db-backup
+            image: mysql:8.0.37
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: BACKUP_ROOT
+              value: /backups
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-root-password
+            command: ["sh","-c"]
+            args:
+            - |
+              set -euo pipefail
+              BACKUP_DIR="${BACKUP_ROOT:-/backups}"
+              TS="$(date +%F-%H%M)"
+              OUT="${BACKUP_DIR}/db-${TS}.sql.gz"
+              TMP="${OUT}.part"
+
+              echo "[db-backup] starting ${TS}"
+              # Atomic write: stream to .part, then mv into place
+              mysqldump -h ghost-mysql -uroot -p"$MYSQL_ROOT_PASSWORD" \
+                --single-transaction --skip-lock-tables --quick \
+                --default-character-set=utf8mb4 \
+                  --set-gtid-purged=OFF \
+                ghostdb \
+              | gzip -c > "$TMP"
+
+              mv -f "$TMP" "$OUT"
+              echo "[db-backup] wrote ${OUT} ($(du -h "$OUT" | cut -f1))"
+
+              # Clean up any old partials (in case of interrupted jobs)
+              find "$BACKUP_DIR" -type f -name 'db-*.sql.gz.part' -mtime +1 -delete
+              find "$BACKUP_DIR" -type f -name 'db-*.sql.gz' -mtime +7 -delete
+
+              # verify the backup
+              gzip -t "$OUT"
+              echo "[db-backup] gzip integrity OK"
+
+            volumeMounts:
+            - name: ghost-backups
+              mountPath: /backups
+          volumes:
+          - name: ghost-backups
+            persistentVolumeClaim:
+              claimName: ghost-backups-pvc

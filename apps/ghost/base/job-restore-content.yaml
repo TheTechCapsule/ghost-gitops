@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ghost-content-restore
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: restore
+          image: alpine:3.20
+          command: ["sh","-c"]
+          args:
+            - |
+              FILE=${FILE:-/backups/LATEST.tgz}
+              if [ "$FILE" = "/backups/LATEST.tgz" ]; then
+                FILE=$(ls -1t /backups/content-*.tgz | head -n1)
+              fi
+              echo "Restoring $FILE ..."
+              rm -rf /content/* && tar xzf "$FILE" -C /content
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+            - name: ghost-content
+              mountPath: /content
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: ghost-backups-pvc
+        - name: ghost-content
+          persistentVolumeClaim:
+            claimName: ghost-pvc

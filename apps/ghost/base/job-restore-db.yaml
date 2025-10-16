@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ghost-db-restore
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: restore
+          image: mysql:8.0.37
+          command: ["bash","-lc"]
+          args:
+            - |
+              FILE=${FILE:-/backups/LATEST.sql.gz}
+              if [ "$FILE" = "/backups/LATEST.sql.gz" ]; then
+                FILE=$(ls -1t /backups/db-*.sql.gz | head -n1)
+              fi
+              echo "Restoring $FILE ..."
+              gunzip -c "$FILE" | mysql -h ghost-mysql -uroot -p"$MYSQL_ROOT_PASSWORD"
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-root-password
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: ghost-backups-pvc

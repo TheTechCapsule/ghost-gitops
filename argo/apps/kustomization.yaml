@@ -1,0 +1,9 @@
+# Kustomization for ArgoCD Applications
+# Copy example applications from ../examples/ to this directory and customize them
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Copy and customize these from ../examples/
+  # - ghost-dev-app.yaml
+  # - ghost-staging-app.yaml
+  # - ghost-prod-app.yaml

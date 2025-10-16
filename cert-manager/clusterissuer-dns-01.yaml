@@ -1,0 +1,25 @@
+# Example ClusterIssuer for Let's Encrypt with DNS01 challenge
+# This example uses Cloudflare, but works with any DNS provider that supports DNS-01
+# Replace the placeholder values with your actual configuration
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod-dns01
+spec:
+  acme:
+    # Replace with your email address for Let's Encrypt notifications
+    email: your-email@example.com
+    # Let's Encrypt production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # Secret to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+    - dns01:
+        cloudflare:
+          # Optional: DNS provider account email (can be omitted when using API tokens)
+          email: your-dns-email@example.com
+          # Reference to secret containing DNS provider API token
+          apiTokenSecretRef:
+            name: dns-api-token-secret
+            key: api-token

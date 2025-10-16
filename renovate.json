@@ -1,0 +1,54 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": [
+      "config:recommended",
+      ":semanticCommits",
+      ":disableRateLimiting",
+      ":label(autoupdate)"
+    ],
+    "timezone": "Europe/London",
+    "schedule": ["after 8pm on sunday"],
+    "dependencyDashboard": true,
+    "enabledManagers": ["regex"],
+    "regexManagers": [
+      {
+        "fileMatch": [
+          "apps/ghost/base/.*\\.ya?ml$",
+          "apps/ghost/overlays/.*/.*\\.ya?ml$"
+        ],
+        "matchStrings": [
+          "image:\\s?(?<depName>ghost)\\:(?<currentValue>\\S+)",
+          "image:\\s?(?<depName>mysql)\\:(?<currentValue>\\S+)",
+          "image:\\s?(?<depName>busybox)\\:(?<currentValue>\\S+)"
+        ],
+        "datasourceTemplate": "docker"
+      }
+    ],
+    "packageRules": [
+      {
+        "matchDatasources": ["docker"],
+        "matchPackageNames": ["ghost"],
+        "groupName": "ghost image",
+        "labels": ["ghost"],
+        "separateMajorMinor": true
+      },
+      {
+        "matchDatasources": ["docker"],
+        "matchPackageNames": ["mysql"],
+        "groupName": "mysql image",
+        "labels": ["mysql"],
+        "separateMajorMinor": true
+      },
+      {
+        "matchDatasources": ["docker"],
+        "matchPackageNames": ["busybox"],
+        "groupName": "busybox image",
+        "labels": ["busybox"],
+        "separateMajorMinor": true
+      }
+    ],
+    "prHourlyLimit": 2,
+    "prConcurrentLimit": 5,
+    "rangeStrategy": "replace",
+    "automerge": false
+  }

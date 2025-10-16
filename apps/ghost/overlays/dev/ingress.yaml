@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ghost-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.pathmatcher: PathPrefix
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  rules:
+    - host: blog.site.local
+      http:
+        paths:
+          - path: /blog
+            pathType: Prefix
+            backend:
+              service:
+                name: ghost
+                port:
+                  number: 2368

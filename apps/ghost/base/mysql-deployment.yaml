@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost-mysql
+spec:
+  selector:
+    matchLabels:
+      app: ghost-mysql
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ghost-mysql
+        app.kubernetes.io/name: ghost-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:9.4.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: ghostdb
+            - name: MYSQL_USER
+              value: ghost
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-user-password
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: ghost-mysql-storage
+      volumes:
+        - name: ghost-mysql-storage
+          emptyDir: {}

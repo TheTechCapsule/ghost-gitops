@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: ghost
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        # ensure both writable paths come from volumes:
+        # - /var/lib/ghost/content (PVC)
+        # - /var/lib/ghost/config.production.json (emptyDir subPath)
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ghost-mysql
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+      - name: mysql
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+            add: ["SETGID","SETUID","CHOWN"]
+        # MySQL image manages its own user; leave runAsUser unset to avoid perms conflicts
+        # Root FS stays read-write because mysql writes outside its data dir at startup

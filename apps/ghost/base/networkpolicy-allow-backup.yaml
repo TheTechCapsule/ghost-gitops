@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backup-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ghost-backup
+  policyTypes: ["Egress"]
+  egress:
+    # DNS to CoreDNS in kube-system
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # MySQL inside the namespace
+    - ports:
+        - { protocol: TCP, port: 3306 }

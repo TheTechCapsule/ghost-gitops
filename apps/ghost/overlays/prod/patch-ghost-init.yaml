@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost
+spec:
+  template:
+    spec:
+      # 1) Init container writes config.production.json from envs
+      initContainers:
+        - name: ghost-config-writer
+          image: busybox:1.36
+          command: ["sh","-c"]
+          args:
+            - |
+              mkdir -p /config
+              cat > /config/config.production.json <<EOF
+              {
+                "url": "${url}",
+                "server": { "port": 2368, "host": "::" },
+                "database": {
+                  "client": "${database__client}",
+                  "connection": {
+                    "host": "${database__connection__host}",
+                    "user": "${database__connection__user}",
+                    "password": "${database__connection__password}",
+                    "database": "${database__connection__database}"
+                  }
+                },
+                "mail": {
+                  "transport": "SMTP",
+                  "from": "${mail__from}", 
+                  "options": {
+                    "host": "${mail__options__host}",
+                    "port": ${mail__options__port},
+                    "secure": ${mail__options__secure},
+                    "auth": {
+                      "user": "${mail__options__auth__user}",
+                      "pass": "${mail__options__auth__pass}"
+                    }
+                  }
+                },
+                "logging": { "transports": ["file","stdout"] },
+                "paths": { "contentPath": "/var/lib/ghost/content" }
+              }
+              EOF
+          env:
+            - name: url
+              value: "https://example.com/blog"
+
+            - name: database__client
+              value: mysql
+            - name: database__connection__host
+              value: ghost-mysql
+            - name: database__connection__user
+              value: ghost
+            - name: database__connection__password
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-user-password
+            - name: database__connection__database
+              value: ghostdb
+
+            - name: mail__options__host
+              value: smtp.your-provider.com
+            - name: mail__options__port
+              value: "587"         # will render as number 587 in JSON
+            - name: mail__options__secure
+              value: "false"       # will render as boolean false in JSON
+            - name: mail__options__auth__user
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-smtp-secret
+                  key: SMTP_USER
+            - name: mail__options__auth__pass
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-smtp-secret
+                  key: SMTP_PASS
+          volumeMounts:
+            - name: ghost-config-dir
+              mountPath: /config
+
+      # 2) Make Ghost see that generated file (use subPath so we don't shadow /var/lib/ghost)
+      containers:
+        - name: ghost
+          volumeMounts:
+            - name: ghost-config-dir
+              mountPath: /var/lib/ghost/config.production.json
+              subPath: config.production.json
+
+      # 3) Scratch volume shared between init + main container
+      volumes:
+        - name: ghost-config-dir
+          emptyDir: {}

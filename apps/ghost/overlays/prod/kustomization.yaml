@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: default
+resources:
+  - ../../base
+  - ingress.yaml
+  - hpa.yaml
+patches:
+  - path: patch-ghost-env.yaml
+  - path: patch-ghost-init.yaml
+
+# Optional: Uncomment to enable monitoring (requires Prometheus Operator)
+# - ../../base/monitoring.yaml

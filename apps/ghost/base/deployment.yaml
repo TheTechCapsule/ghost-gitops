@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost
+  labels:
+    app: ghost
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ghost
+  template:
+    metadata:
+      labels:
+        app: ghost
+        app.kubernetes.io/name: ghost
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+      containers:
+        - name: ghost
+          image: ghost:6.0.5
+          ports:
+            - containerPort: 2368
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          readinessProbe:
+            httpGet:
+              path: /blog/              # or "/" if you prefer
+              port: 2368
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: example.com
+                - name: X-Forwarded-Proto
+                  value: https
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /blog/
+              port: 2368
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: example.com
+                - name: X-Forwarded-Proto
+                  value: https
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+          env:
+            # dev overlay uses localhost; prod overlay patches URL to the real domain/path
+            - name: url
+              value: "http://localhost:2368"
+            - name: database__client
+              value: mysql
+            - name: database__connection__host
+              value: ghost-mysql
+            - name: database__connection__user
+              value: ghost
+            - name: database__connection__password
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-user-password
+            - name: database__connection__database
+              value: ghostdb
+          volumeMounts:
+            - name: ghost-content
+              mountPath: /var/lib/ghost/content
+      volumes:
+        - name: ghost-content
+          persistentVolumeClaim:
+            claimName: ghost-pvc

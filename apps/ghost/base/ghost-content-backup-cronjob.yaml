@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ghost-content-backup
+  labels:
+    app: ghost-backup
+spec:
+  schedule: "30 2 * * *" # daily at 02:30
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ghost-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: content-backup
+            image: alpine:3.20
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: BACKUP_ROOT
+              value: /backups
+            command: ["sh","-c"]
+            args:
+            - |
+              set -euo pipefail
+              BACKUP_DIR="${BACKUP_ROOT:-/backups}"
+              TS="$(date +%F-%H%M)"
+              OUT="${BACKUP_DIR}/content-${TS}.tgz"
+              TMP="${OUT}.part"
+
+              echo "[content-backup] starting ${TS}"
+              # Tar from the *parent directory* so top-level is `content/`
+              # (you have asked not to use subfolders on the PVC)
+              tar -C /var/lib/ghost -czf "$TMP" content
+
+              mv -f "$TMP" "$OUT"
+              echo "[content-backup] wrote ${OUT} ($(du -h "$OUT" | cut -f1))"
+
+              # Clean up any abandoned partials and rotate old archives
+              find "$BACKUP_DIR" -type f -name 'content-*.tgz.part' -mtime +1 -delete
+              find "$BACKUP_DIR" -type f -name 'content-*.tgz' -mtime +7 -delete
+              
+              # verify the backup
+              tar -tzf "$OUT" >/dev/null
+              echo "[content-backup] tar integrity OK"
+              
+            volumeMounts:
+              - name: ghost-content
+                mountPath: /var/lib/ghost/content
+              # Mount the backups PVC at /backups (flat files, not subfolders)
+              - name: ghost-backups
+                mountPath: /backups
+          volumes:
+          - name: ghost-content
+            persistentVolumeClaim:
+              claimName: ghost-pvc
+          - name: ghost-backups
+            persistentVolumeClaim:
+              claimName: ghost-backups-pvc

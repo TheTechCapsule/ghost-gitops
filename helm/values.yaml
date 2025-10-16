@@ -1,0 +1,99 @@
+# Ghost Production Helm Chart Values
+
+ghost:
+  image:
+    repository: ghost
+    tag: "6.0.5"
+    pullPolicy: IfNotPresent
+  
+  replicaCount: 1
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  
+  # Ghost Configuration
+  config:
+    url: "https://yourdomain.com"
+    database:
+      client: mysql
+      connection:
+        host: ghost-mysql
+        user: ghost
+        database: ghostdb
+    
+    # SMTP Configuration
+    mail:
+      transport: SMTP
+      options:
+        host: smtp.gmail.com
+        port: 587
+        auth:
+          user: ""
+          pass: ""
+      from: "noreply@yourdomain.com"
+
+mysql:
+  enabled: true
+  image:
+    repository: mysql
+    tag: "8.0"
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+  
+  auth:
+    rootPassword: ""
+    database: ghostdb
+    username: ghost
+    password: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+  
+  hosts:
+    - host: yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  tls:
+    - secretName: ghost-tls
+      hosts:
+        - yourdomain.com
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 30  # Keep backups for 30 days
+  
+  database:
+    enabled: true
+    schedule: "0 1 * * *"
+  
+  content:
+    enabled: true
+    schedule: "0 3 * * *"
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+security:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false

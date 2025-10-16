@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# you were deploying to the "default" namespace; keeping that
+namespace: default
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ghost-pvc.yaml
+  - mysql-statefulset.yaml
+  - ghost-backups-pvc.yaml
+  - ghost-db-backup-cronjob.yaml
+  - ghost-content-backup-cronjob.yaml
+  - pdb.yaml
+  - backup-verify-retention.yaml
+  - networkpolicy-deny-all.yaml
+  - networkpolicy-allow-mysql.yaml
+  - networkpolicy-allow-dns.yaml
+  - networkpolicy-allow-smtp.yaml
+  - networkpolicy-allow-ghost.yaml
+  - networkpolicy-allow-backup.yaml
+  # - networkpolicy-allow-prometheus.yaml
+
+patches:
+  - path: patch-resources.yaml
+  - path: patch-security.yaml

@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ghost-monitor
+  labels:
+    app: ghost
+spec:
+  selector:
+    matchLabels:
+      app: ghost
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ghost-metrics
+  labels:
+    app: ghost
+spec:
+  ports:
+  - name: http
+    port: 2368
+    targetPort: 2368
+  selector:
+    app: ghost

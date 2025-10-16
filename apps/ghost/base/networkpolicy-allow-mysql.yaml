@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mysql-from-ghost-and-backups
+spec:
+  podSelector:
+    matchLabels:
+      app: ghost-mysql
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ghost
+        - podSelector:
+            matchLabels:
+              app: ghost-backup   # label your backup jobs with this
+      ports:
+        - protocol: TCP
+          port: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ghost-egress-to-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: ghost
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ghost-mysql
+      ports:
+        - protocol: TCP
+          port: 3306

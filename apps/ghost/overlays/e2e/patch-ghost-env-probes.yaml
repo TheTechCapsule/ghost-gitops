@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost
+spec:
+  template:
+    spec:
+      containers:
+        - name: ghost
+          env:
+            - name: url
+              value: "https://e2e-ghost.example.com/blog"
+            - name: database__connection__host
+              value: "e2e-ghost-mysql"
+          readinessProbe:
+            $patch: replace
+            httpGet:
+              path: /blog/
+              port: 2368
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: e2e-ghost.example.com
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            $patch: replace
+            httpGet:
+              path: /blog/
+              port: 2368
+              scheme: HTTP
+              httpHeaders:
+                - name: Host
+                  value: e2e-ghost.example.com
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6

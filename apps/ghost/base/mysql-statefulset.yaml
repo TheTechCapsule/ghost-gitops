@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ghost-mysql
+  labels: { app: ghost-mysql }
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  selector: { app: ghost-mysql }
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ghost-mysql
+  labels: { app: ghost-mysql }
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  serviceName: ghost-mysql
+  replicas: 1
+  selector:
+    matchLabels: { app: ghost-mysql }
+  template:
+    metadata:
+      labels: { app: ghost-mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0.37
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: ghostdb
+            - name: MYSQL_USER
+              value: ghost
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ghost-mysql-secret
+                  key: mysql-user-password
+          args:
+            # sensible defaults for Ghost; utf8mb4 for emojis
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --innodb-flush-log-at-trx-commit=1
+            - --sync-binlog=1
+          readinessProbe:
+            exec:
+              command: ["bash","-lc","mysqladmin ping -uroot -p$MYSQL_ROOT_PASSWORD -h 127.0.0.1"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["bash","-lc","mysqladmin ping -uroot -p$MYSQL_ROOT_PASSWORD -h 127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

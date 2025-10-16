@@ -1,0 +1,23 @@
+# Example Root Application for ArgoCD App of Apps pattern
+# Customize this file for your setup
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ghost-root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # Update this URL to your repository
+    repoURL: https://github.com/YOUR-USERNAME/YOUR-REPO.git
+    targetRevision: main
+    path: argo/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
