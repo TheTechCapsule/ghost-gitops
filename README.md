@@ -1,11 +1,11 @@
 # Ghost Capsule 🚀
 
-[![Validate Kustomize overlays](https://github.com/YOUR-USERNAME/YOUR-REPO/actions/workflows/validate.yaml/badge.svg)](https://github.com/YOUR-USERNAME/YOUR-REPO/actions/workflows/validate.yaml)
-[![Smoke test](https://github.com/YOUR-USERNAME/YOUR-REPO/actions/workflows/smoke-kind.yaml/badge.svg)](https://github.com/YOUR-USERNAME/YOUR-REPO/actions/workflows/smoke-kind.yaml)
+[![Validate Kustomize overlays](https://github.com/TheTechCapsule/ghost-gitops/actions/workflows/validate.yaml/badge.svg)](https://github.com/TheTechCapsule/ghost-gitops/actions/workflows/validate.yaml)
+[![Smoke test](https://github.com/TheTechCapsule/ghost-gitops/actions/workflows/smoke-kind.yaml/badge.svg)](https://github.com/TheTechCapsule/ghost-gitops/actions/workflows/smoke-kind.yaml)
 
 Ghost blog on Kubernetes with GitOps
 
-This repository contains a Ghost (the open source publishing platform) deployment using modern GitOps practices. I found this approach interesting and use it myself for my own blog.
+This repository contains a Ghost (the open source publishing platform) deployment using modern GitOps practices. I found this approach interesting and use it myself for the TTC blog.
 
 This repo is an opinionated deployment using:
 
@@ -16,8 +16,8 @@ This repo is an opinionated deployment using:
 - **Backup jobs** (PVC snapshots + MySQL dumps, with restore jobs included)
 
 The goal is simple:
-👉 Spin up Ghost in a cluster the right way — clean, reproducible, Git-driven.
-👉 Just a solid baseline you can trust, tweak, and build on.
+👉 Spin up Ghost in a cluster — clean, reproducible, Git-driven.
+👉 A solid base, which can be extended and tweaked as required.
 
 ## 📂 Repo Structure
 
